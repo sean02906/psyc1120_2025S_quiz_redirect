@@ -21,65 +21,41 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .error {
-            color: #d32f2f;
-        }
+        .error { color: #d32f2f; }
     </style>
 </head>
 <body>
     <div id="message" class="message">Verifying access...</div>
 
     <script>
-        const QUIZ_URL = "https://bostoncollege.instructure.com/courses/1668346/quizzes/2448463";
-
-        function showDebugInfo() {
-            const messageDiv = document.getElementById('message');
-            const params = new URLSearchParams(window.location.search);
-            messageDiv.innerHTML += '<br><br>Debug info:<br>' + 
-                                  'Raw URL parameters: ' + window.location.search + '<br>' +
-                                  'Raw t parameter: ' + params.get('t') + '<br>' +
-                                  'Current time bucket: ' + Math.floor(Date.now() / 30000);
-        }
+        // *** CONFIGURATION - How long a QR code remains valid ***
+        const VALID_WINDOW_MS = 30000; // 30 seconds
 
         function validateAccess() {
             try {
                 const params = new URLSearchParams(window.location.search);
-                const receivedTime = params.get('t');
+                const timestamp = parseInt(params.get('t'));
+                const quizUrl = params.get('url');
                 
-                // First check if we even got a timestamp
-                if (!receivedTime) {
-                    const messageDiv = document.getElementById('message');
-                    messageDiv.textContent = "Invalid access code.";
-                    messageDiv.classList.add('error');
-                    showDebugInfo();
-                    return;
+                if (!quizUrl || !timestamp) {
+                    throw new Error('Invalid parameters');
                 }
 
-                // Convert timestamp to number and validate
-                const timestamp = parseInt(receivedTime, 10);
-                const currentBucket = Math.floor(Date.now() / 30000);
+                const now = Date.now();
+                const age = now - timestamp;
                 
-                if (timestamp === currentBucket || timestamp === currentBucket - 1) {
-                    // Valid timestamp - redirect to quiz
-                    window.location.href = QUIZ_URL;
+                if (age >= 0 && age < VALID_WINDOW_MS) {
+                    window.location.href = decodeURIComponent(quizUrl);
                 } else {
-                    // Invalid timestamp
-                    const messageDiv = document.getElementById('message');
-                    messageDiv.textContent = "Access code has expired. Please scan the current code.";
-                    messageDiv.classList.add('error');
-                    showDebugInfo();
+                    document.getElementById('message').textContent = "Access code has expired. Please scan the current code.";
+                    document.getElementById('message').classList.add('error');
                 }
-
             } catch (error) {
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = "An error occurred. Please try again.";
-                messageDiv.classList.add('error');
-                console.error(error);
-                showDebugInfo();
+                document.getElementById('message').textContent = "Invalid access code.";
+                document.getElementById('message').classList.add('error');
             }
         }
 
-        // Start validation when page loads
         validateAccess();
     </script>
 </body>
