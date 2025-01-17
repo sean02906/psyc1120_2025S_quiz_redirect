@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Access Verification</title>
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-BDS2MJC2XF"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-BDS2MJC2XF');
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .message {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .error { color: #d32f2f; }
+    </style>
+</head>
+<body>
+    <div id="message" class="message">Verifying access...</div>
+    <script>
+        // *** CONFIGURATION - How long a QR code remains valid ***
+        const VALID_WINDOW_MS = 30000; // 30 seconds
+
+        function generateToken() {
+            // Generate a random 6-digit token
+            return Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+        }
+
+        function appendTokenToUrl(url) {
+            const token = generateToken();
+            const tokenFieldId = 'entry.1234567890'; // Replace with your actual Google Form field ID
+            
+            // Parse the existing URL
+            const urlObj = new URL(decodeURIComponent(url));
+            
+            // Add the token parameter
+            urlObj.searchParams.append(tokenFieldId, token);
+            
+            return urlObj.toString();
+        }
+
+        function validateAccess() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const timestamp = parseInt(params.get('t'));
+                const quizUrl = params.get('url');
+                
+                if (!quizUrl || !timestamp) {
+                    throw new Error('Invalid parameters');
+                }
+                const now = Date.now();
+                const age = now - timestamp;
+                
+                if (age >= 0 && age < VALID_WINDOW_MS) {
+                    // Log successful validation before redirect
+                    gtag('event', 'redirect', {
+                        'event_category': 'quiz_access',
+                        'event_label': 'successful_validation'
+                    });
+                    
+                    // Add token and redirect
+                    const urlWithToken = appendTokenToUrl(quizUrl);
+                    window.location.href = urlWithToken;
+                } else {
+                    // Log expired code attempt
+                    gtag('event', 'expired_code', {
+                        'event_category': 'quiz_access',
+                        'event_label': 'code_expired',
+                        'value': Math.floor(age / 1000) // age in seconds
+                    });
+                    document.getElementById('message').textContent = "Access code has expired. Please scan the current code.";
+                    document.getElementById('message').classList.add('error');
+                }
+            } catch (error) {
+                // Log invalid access attempt
+                gtag('event', 'invalid_code', {
+                    'event_category': 'quiz_access',
+                    'event_label': 'invalid_parameters'
+                });
+                document.getElementById('message').textContent = "Invalid access code.";
+                document.getElementById('message').classList.add('error');
+            }
+        }
+        validateAccess();
+    </script>
+</body>
+</html>
