@@ -38,20 +38,95 @@
         // *** CONFIGURATION - How long a QR code remains valid ***
         const VALID_WINDOW_MS = 30000; // 30 seconds
 
+        function generateDeviceFingerprint() {
+            // Collect device characteristics
+            const components = [
+                navigator.userAgent,
+                screen.width,
+                screen.height,
+                screen.colorDepth,
+                navigator.language,
+                navigator.platform,
+                new Date().getTimezoneOffset(),
+                navigator.hardwareConcurrency,
+                navigator.deviceMemory,
+                navigator.maxTouchPoints,
+                window.devicePixelRatio
+            ].filter(Boolean); // Remove undefined values
+            
+            // Create a hash of the components
+            let hash = 0;
+            const str = components.join('|||');
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32-bit integer
+            }
+            return Math.abs(hash).toString(36); // Convert to base-36 for shorter string
+        }
+
         function generateToken() {
-            // Generate a random 6-digit token
-            return Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+            // Get current time in milliseconds
+            const timestamp = Date.now();
+            
+            // Get last 4 digits of timestamp
+            const timeComponent = (timestamp % 10000).toString().padStart(4, '0');
+            
+            // Generate 4 random digits
+            const randomComponent = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            
+            // Combine for a unique 8-digit token
+            return `${timeComponent}${randomComponent}`;
+        }
+
+        function getDeviceInfo() {
+            return {
+                userAgent: navigator.userAgent,
+                screenResolution: `${screen.width}x${screen.height}`,
+                colorDepth: screen.colorDepth,
+                timezone: new Date().getTimezoneOffset(),
+                language: navigator.language,
+                platform: navigator.platform,
+                cores: navigator.hardwareConcurrency || 'unknown',
+                memory: navigator.deviceMemory || 'unknown',
+                touchPoints: navigator.maxTouchPoints || 'unknown',
+                pixelRatio: window.devicePixelRatio || 1
+            };
         }
 
         function appendTokenToUrl(url) {
             const token = generateToken();
-            const tokenFieldId = 'entry.792201317'; // Replace with your actual Google Form field ID
+            const deviceId = generateDeviceFingerprint();
+            const tokenFieldId = 'entry.792201317'; // Your Google Form field ID
             
             // Parse the existing URL
             const urlObj = new URL(decodeURIComponent(url));
             
             // Add the token parameter
             urlObj.searchParams.append(tokenFieldId, token);
+
+            // Get detailed device info for analytics
+            const deviceInfo = getDeviceInfo();
+            
+            // Log comprehensive attendance event to Google Analytics
+            gtag('event', 'attendance_redirect', {
+                'event_category': 'attendance',
+                'event_label': token,
+                'attendance_token': token,
+                'device_fingerprint': deviceId,
+                'redirect_url': urlObj.toString(),
+                'device_user_agent': deviceInfo.userAgent,
+                'device_screen': deviceInfo.screenResolution,
+                'device_color_depth': deviceInfo.colorDepth,
+                'device_timezone': deviceInfo.timezone,
+                'device_language': deviceInfo.language,
+                'device_platform': deviceInfo.platform,
+                'device_cores': deviceInfo.cores,
+                'device_memory': deviceInfo.memory,
+                'device_touch_points': deviceInfo.touchPoints,
+                'device_pixel_ratio': deviceInfo.pixelRatio,
+                'timestamp': Date.now()
+            });
             
             return urlObj.toString();
         }
@@ -69,10 +144,13 @@
                 const age = now - timestamp;
                 
                 if (age >= 0 && age < VALID_WINDOW_MS) {
-                    // Log successful validation before redirect
+                    // Log successful validation with device info
                     gtag('event', 'redirect', {
                         'event_category': 'quiz_access',
-                        'event_label': 'successful_validation'
+                        'event_label': 'successful_validation',
+                        'device_fingerprint': generateDeviceFingerprint(),
+                        'validation_age_ms': age,
+                        ...getDeviceInfo()
                     });
                     
                     // Add token and redirect
@@ -83,7 +161,9 @@
                     gtag('event', 'expired_code', {
                         'event_category': 'quiz_access',
                         'event_label': 'code_expired',
-                        'value': Math.floor(age / 1000) // age in seconds
+                        'value': Math.floor(age / 1000), // age in seconds
+                        'device_fingerprint': generateDeviceFingerprint(),
+                        ...getDeviceInfo()
                     });
                     document.getElementById('message').textContent = "Access code has expired. Please scan the current code.";
                     document.getElementById('message').classList.add('error');
@@ -92,7 +172,9 @@
                 // Log invalid access attempt
                 gtag('event', 'invalid_code', {
                     'event_category': 'quiz_access',
-                    'event_label': 'invalid_parameters'
+                    'event_label': 'invalid_parameters',
+                    'device_fingerprint': generateDeviceFingerprint(),
+                    ...getDeviceInfo()
                 });
                 document.getElementById('message').textContent = "Invalid access code.";
                 document.getElementById('message').classList.add('error');
