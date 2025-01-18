@@ -35,7 +35,6 @@
 <body>
     <div id="message" class="message">Verifying access...</div>
     <script>
-        // *** CONFIGURATION - How long a QR code remains valid ***
         const VALID_WINDOW_MS = 30000; // 30 seconds
 
         function generateDeviceFingerprint() {
@@ -52,7 +51,7 @@
                 navigator.deviceMemory,
                 navigator.maxTouchPoints,
                 window.devicePixelRatio
-            ].filter(Boolean); // Remove undefined values
+            ].filter(Boolean);
             
             // Create a hash of the components
             let hash = 0;
@@ -60,27 +59,13 @@
             for (let i = 0; i < str.length; i++) {
                 const char = str.charCodeAt(i);
                 hash = ((hash << 5) - hash) + char;
-                hash = hash & hash; // Convert to 32-bit integer
+                hash = hash & hash;
             }
-            return Math.abs(hash).toString(36); // Convert to base-36 for shorter string
-        }
-
-        function generateToken() {
-            // Get current time in milliseconds
-            const timestamp = Date.now();
-            
-            // Get last 4 digits of timestamp
-            const timeComponent = (timestamp % 10000).toString().padStart(4, '0');
-            
-            // Generate 4 random digits
-            const randomComponent = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-            
-            // Combine for a unique 8-digit token
-            return `${timeComponent}${randomComponent}`;
+            return Math.abs(hash).toString(36);
         }
 
         function getDeviceInfo() {
-            return {
+            const info = {
                 userAgent: navigator.userAgent,
                 screenResolution: `${screen.width}x${screen.height}`,
                 colorDepth: screen.colorDepth,
@@ -92,21 +77,35 @@
                 touchPoints: navigator.maxTouchPoints || 'unknown',
                 pixelRatio: window.devicePixelRatio || 1
             };
+
+            // Create a compact string representation for the form
+            return btoa(JSON.stringify(info));
+        }
+
+        function generateToken() {
+            const timestamp = Date.now();
+            const timeComponent = (timestamp % 10000).toString().padStart(4, '0');
+            const randomComponent = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            return `${timeComponent}${randomComponent}`;
         }
 
         function appendTokenToUrl(url) {
             const token = generateToken();
             const deviceId = generateDeviceFingerprint();
-            const tokenFieldId = 'entry.792201317'; // Your Google Form field ID
+            const deviceInfo = getDeviceInfo();
             
             // Parse the existing URL
             const urlObj = new URL(decodeURIComponent(url));
             
-            // Add the token parameter
+            // Add both token and device info to form URL
+            // Replace these field IDs with your actual Google Form field IDs
+            const tokenFieldId = 'entry.67049609';
+            const deviceFieldId = 'entry.122827876';  // Add this field to your form
+            const deviceInfoFieldId = 'entry.2139878742';  // Add this field to your form
+            
             urlObj.searchParams.append(tokenFieldId, token);
-
-            // Get detailed device info for analytics
-            const deviceInfo = getDeviceInfo();
+            urlObj.searchParams.append(deviceFieldId, deviceId);
+            urlObj.searchParams.append(deviceInfoFieldId, deviceInfo);
             
             // Log comprehensive attendance event to Google Analytics
             gtag('event', 'attendance_redirect', {
@@ -115,16 +114,16 @@
                 'attendance_token': token,
                 'device_fingerprint': deviceId,
                 'redirect_url': urlObj.toString(),
-                'device_user_agent': deviceInfo.userAgent,
-                'device_screen': deviceInfo.screenResolution,
-                'device_color_depth': deviceInfo.colorDepth,
-                'device_timezone': deviceInfo.timezone,
-                'device_language': deviceInfo.language,
-                'device_platform': deviceInfo.platform,
-                'device_cores': deviceInfo.cores,
-                'device_memory': deviceInfo.memory,
-                'device_touch_points': deviceInfo.touchPoints,
-                'device_pixel_ratio': deviceInfo.pixelRatio,
+                'device_user_agent': navigator.userAgent,
+                'device_screen': `${screen.width}x${screen.height}`,
+                'device_color_depth': screen.colorDepth,
+                'device_timezone': new Date().getTimezoneOffset(),
+                'device_language': navigator.language,
+                'device_platform': navigator.platform,
+                'device_cores': navigator.hardwareConcurrency || 'unknown',
+                'device_memory': navigator.deviceMemory || 'unknown',
+                'device_touch_points': navigator.maxTouchPoints || 'unknown',
+                'device_pixel_ratio': window.devicePixelRatio || 1,
                 'timestamp': Date.now()
             });
             
@@ -150,31 +149,31 @@
                         'event_label': 'successful_validation',
                         'device_fingerprint': generateDeviceFingerprint(),
                         'validation_age_ms': age,
-                        ...getDeviceInfo()
+                        ...JSON.parse(atob(getDeviceInfo()))
                     });
                     
                     // Add token and redirect
                     const urlWithToken = appendTokenToUrl(quizUrl);
                     window.location.href = urlWithToken;
                 } else {
-                    // Log expired code attempt
+                    // Log expired code attempt with device info
                     gtag('event', 'expired_code', {
                         'event_category': 'quiz_access',
                         'event_label': 'code_expired',
-                        'value': Math.floor(age / 1000), // age in seconds
+                        'value': Math.floor(age / 1000),
                         'device_fingerprint': generateDeviceFingerprint(),
-                        ...getDeviceInfo()
+                        ...JSON.parse(atob(getDeviceInfo()))
                     });
                     document.getElementById('message').textContent = "Access code has expired. Please scan the current code.";
                     document.getElementById('message').classList.add('error');
                 }
             } catch (error) {
-                // Log invalid access attempt
+                // Log invalid access attempt with device info
                 gtag('event', 'invalid_code', {
                     'event_category': 'quiz_access',
                     'event_label': 'invalid_parameters',
                     'device_fingerprint': generateDeviceFingerprint(),
-                    ...getDeviceInfo()
+                    ...JSON.parse(atob(getDeviceInfo()))
                 });
                 document.getElementById('message').textContent = "Invalid access code.";
                 document.getElementById('message').classList.add('error');
