@@ -36,46 +36,61 @@
     <div id="message" class="message">Verifying access...</div>
 
     <script>
-        // *** CONFIGURATION - How long a QR code remains valid ***
-        const VALID_WINDOW_MS = 30000; // 30 seconds
-
+        // Configuration
+        const VALID_WINDOW_MS = 30000; // 30 seconds for regular access
+        const SPECIAL_ACCESS_TOKEN = 'YOUR_SECRET_CODE_HERE'; // Replace with your chosen secret code
+        
         function validateAccess() {
             try {
                 const params = new URLSearchParams(window.location.search);
-                const timestamp = parseInt(params.get('t'));
+                const timestamp = params.get('t');
                 const quizUrl = params.get('url');
+                const token = params.get('token');
                 
-                if (!quizUrl || !timestamp) {
-                    throw new Error('Invalid parameters');
+                // Handle regular access attempt
+                if (quizUrl && timestamp) {
+                    // Store the latest quiz URL
+                    localStorage.setItem('latestQuizUrl', quizUrl);
+                    
+                    const age = Date.now() - parseInt(timestamp);
+                    if (age >= 0 && age < VALID_WINDOW_MS) {
+                        gtag('event', 'redirect', {
+                            'event_category': 'quiz_access',
+                            'event_label': 'standard_access'
+                        });
+                        window.location.href = decodeURIComponent(quizUrl);
+                        return;
+                    }
                 }
-
-                const now = Date.now();
-                const age = now - timestamp;
                 
-                if (age >= 0 && age < VALID_WINDOW_MS) {
-                    // Log successful validation before redirect
+                // Handle special token access - no time validation
+                if (token === SPECIAL_ACCESS_TOKEN) {
+                    const storedUrl = localStorage.getItem('latestQuizUrl');
+                    
+                    if (!storedUrl) {
+                        throw new Error('No active quiz found');
+                    }
+                    
                     gtag('event', 'redirect', {
                         'event_category': 'quiz_access',
-                        'event_label': 'successful_validation'
+                        'event_label': 'special_token_access'
                     });
-                    window.location.href = decodeURIComponent(quizUrl);
-                } else {
-                    // Log expired code attempt
-                    gtag('event', 'expired_code', {
-                        'event_category': 'quiz_access',
-                        'event_label': 'code_expired',
-                        'value': Math.floor(age / 1000) // age in seconds
-                    });
-                    document.getElementById('message').textContent = "Access code has expired. Please scan the current code.";
-                    document.getElementById('message').classList.add('error');
+                    window.location.href = decodeURIComponent(storedUrl);
+                    return;
                 }
+                
+                // If we get here, access is denied
+                throw new Error('Access denied');
+                
             } catch (error) {
-                // Log invalid access attempt
-                gtag('event', 'invalid_code', {
+                gtag('event', 'access_denied', {
                     'event_category': 'quiz_access',
-                    'event_label': 'invalid_parameters'
+                    'event_label': error.message
                 });
-                document.getElementById('message').textContent = "Invalid access code.";
+                document.getElementById('message').textContent = 
+                    error.message === 'No active quiz found' 
+                        ? "No active quiz found. Please try again after the instructor displays the quiz code."
+                        : "Access code has expired or is invalid. Please scan the current code.";
                 document.getElementById('message').classList.add('error');
             }
         }
